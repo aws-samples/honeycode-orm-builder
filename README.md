@@ -8,7 +8,7 @@ that represents a row in your table.
 ## Documentation
 
 Example Usage of builder:
-python HoneycodeORMBuilder.py <workbookid>
+python3 HoneycodeORMBuilder.py [workbookid]
 
 Output in the ORM folder a list of files representing your tables
 
