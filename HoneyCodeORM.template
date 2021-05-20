@@ -1,0 +1,171 @@
+import boto3
+
+class {{classNameEditor}}:
+    def __init__(self) -> object:
+        self.tableid = "{{tableID}}"
+        self.workbookid = "{{workbookID}}"
+        self.tablename = "{{tableName}}"
+        self.honeycode_client = boto3.client('honeycode')
+
+    #list all rows in the table
+    def listAllRows(self):
+        rowRet = []
+        nextToken2 = ""
+        response = self.honeycode_client.list_table_rows(
+            workbookId=self.workbookid,
+            tableId=self.tableid, maxResults=100)
+        if "nextToken" in response:
+            nextToken2 = response["nextToken"]
+        for row in response["rows"]:
+            rowRet.append(self.__convertRowOfHoneycodeDataToObject(row))
+        while nextToken2:
+            response = self.honeycode_client.list_table_rows(
+                workbookId=self.workbookid,
+                tableId=self.tableid, maxResults=100, nextToken=nextToken2)
+            nextToken2 = ""
+            if "nextToken" in response:
+                nextToken2 = response["nextToken"]
+            for row in response["rows"]:
+                rowRet.append(self.__convertRowOfHoneycodeDataToObject(row))
+        return rowRet
+
+
+    #find rows with criteria
+    def find(self, columnName, operator, value):
+        searchVal = "=Filter("+self.tablename+",\""+self.tablename+"["+columnName+"]"+operator+"%\", \""+value+"\")"
+        response = self.honeycode_client.query_table_rows(
+            workbookId=self.workbookid,
+            tableId=self.tableid,
+            filterFormula={"formula": searchVal})
+        retValue = []
+        for row in response["rows"]:
+           retValue.append(self.__convertRowOfHoneycodeDataToObject(row))
+        return retValue
+
+    #Update one row
+    def updateRow(self, o_row):
+        response = self.honeycode_client.batch_update_table_rows(
+            workbookId=self.workbookid,
+            tableId=self.tableid,
+            rowsToUpdate=
+               self.__convertRowsOfObjectsToHoneyCodeUpdateRows([o_row])
+            )
+
+    #Update multipule rows
+    def updateRows(self, o_rows):
+        rows = self.__convertRowsOfObjectsToHoneyCodeUpdateRows(o_rows)
+        for i in range(0, len(rows), 100):
+            response = self.honeycode_client.batch_update_table_rows(
+                workbookId=self.workbookid,
+                tableId=self.tableid,
+                rowsToUpdate=rows[i:i + 100]
+
+                )
+    #takes a row or an id
+    def deleteRow(self, o_row):
+        response = self.honeycode_client.batch_delete_table_rows(
+                workbookId=self.workbookid,
+                tableId=self.tableid,
+                rowIds=[o_row.rowId])
+
+    #deletes all rows in this table
+    def deleteAllRows(self):
+        rows = self.listAllRows()
+        for i in range(0, len(rows), 100):
+            response = self.honeycode_client.batch_delete_table_rows(
+                workbookId=self.workbookid,
+                tableId=self.tableid,
+                rowIds=rows[i:i + 100]
+            )
+
+    def batchSaveRows(self, o_rows):
+        maxBatchSize = 100
+        currentPage = 0
+
+        rows = self.__convertRowsOfObjectsToHoneyCodeRows(o_rows)
+        while currentPage*maxBatchSize < len(rows):
+            begin = currentPage * maxBatchSize
+            end = (currentPage * maxBatchSize) + maxBatchSize
+            if end > len(rows):
+                end = len(rows)
+            currentPage+=1
+            response = self.honeycode_client.batch_create_table_rows(
+                workbookId=self.workbookid,
+                tableId=self.tableid,
+                rowsToCreate=rows[begin:end])
+            for batchid in response["createdRows"]:
+                for row in o_rows:
+                    if row.batchid == batchid:
+                        row.rowId = response["createdRows"][batchid]
+
+    #convert honeycode row to object
+    def __convertRowOfHoneycodeDataToObject(self, row):
+        ar = {{classnameRow}}({{findDataFromColumn}}, row["rowId"])
+        return ar
+
+    #convience function to convert objects to rows
+    def __convertRowsOfObjectsToHoneyCodeRows(self, rows):
+        insertableRows = []
+        batchID = 0
+        for row in rows:
+            batchID += 1
+            convertedRow = row.createInsertRowData("insert" + str(batchID))
+            row.batchid = "insert" + str(batchID)
+            insertableRows.append(convertedRow)
+        return insertableRows
+
+    #convience function to convert objects to updates
+    def __convertRowsOfObjectsToHoneyCodeUpdateRows(self, rows):
+        insertableRows = []
+        batchID = 0
+        for row in rows:
+            batchID += 1
+            convertedRow = row.createUpdateRowData()
+            insertableRows.append(convertedRow)
+        return insertableRows
+
+#Class For data
+class {{classnameRow}}:
+    def __init__(self{{variableNamesParams}}, rowId=None)  -> object:
+        self.rowId = rowId
+        self.batchid = ""
+{{variableNamesAlloc}}
+
+    def __repr__(self):
+        return "{{classnameRow}}<" + str(self.rowId) + ">"
+
+    def __str__(self):
+        return "{{classnameRow}}<" + {{printstatment}} + ">"
+
+    def save(self):
+        iface = {{classNameEditor}}()
+        if self.rowId:
+            iface.updateRow(self)
+        else:
+            iface.batchSaveRows([self])
+
+    def delete(self):
+        iface = {{classNameEditor}}()
+        iface.deleteRow(self)
+        self.rowId = ""
+
+    def createInsertRowData(self, batch_item_id):
+        operation = "cellsToCreate"
+        dictToAdd =  {
+                "batchItemId": batch_item_id,
+                operation: {
+                }
+            }
+{{honeyCodeRowDefs}}
+        return dictToAdd
+    def createUpdateRowData(self):
+        operation = "cellsToUpdate"
+        dictToAdd =  {
+                "rowId": self.rowId,
+                operation: {
+                }
+            }
+{{honeyCodeRowDefs}}
+        return dictToAdd
+
+
